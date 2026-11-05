@@ -3,7 +3,7 @@
 Prototype expérimental pour **KCD2 sur PC, à la manette**. Ce dépôt était vide.
 Il contient le code, le générateur de mod et les tests hors jeu.
 
-[Télécharger la version de diagnostic v0.2.1 sur GitHub](https://github.com/IXSKY6000/mods-kcd2-chatgpt/raw/refs/heads/main/downloads/street_talk-v0.2.1-diagnostic.zip)
+[Télécharger la version de test v0.2.2 sur GitHub](https://github.com/IXSKY6000/mods-kcd2-chatgpt/raw/refs/heads/main/downloads/street_talk-v0.2.2-diagnostic.zip)
 
 La v0.2.0 est détectée chez le joueur mais son interaction ne fonctionne pas.
 La v0.2.1 corrige des fragilités de démarrage, ajoute le chemin d’interaction
@@ -21,8 +21,9 @@ aucune clé API. Le mod ne lance pas la fenêtre de dialogue complet.
 - Requête XGEN `dialog:chatRequest`, puis confirmation par l'invite native de chat.
 - Génération de décisions Skald `Type="chat"`, `ChatPosition="First"` pour
   Saluer et `Second` pour Provoquer, avec références vocales originales.
-- Variantes génériques homme/femme. Les chats de quête et le suivi natifs gardent
-  la priorité. Les animaux, morts, inconscients, combats et dialogues occupés
+- Variantes génériques homme/femme. Les réponses natives actives et les
+  conversations déjà engagées gardent la priorité. Un chat simplement disponible
+  ou une option « Suivre » ne bloque plus le mod. Les animaux, morts, inconscients, combats et dialogues occupés
   sont exclus, ainsi que les réponses natives en attente, y compris d’un autre PNJ
   proche. La disponibilité est revérifiée lors de l’appui sur R1.
 - Deux salutations consécutives autorisées par PNJ, puis 90 secondes de délai.
@@ -106,13 +107,13 @@ Ils valident la logique et les structures produites, pas le moteur KCD2.
 
 Voir [les sources et hypothèses d'intégration](docs/RESEARCH.md).
 
-## Diagnostic v0.2.1
+## Diagnostic v0.2.2
 
 Remplacer l'ancien dossier `Mods/street_talk` par celui de la nouvelle archive.
 Garder `street_talk` dans `mod_order.txt` s'il existe. Fermer complètement le jeu,
 le relancer, charger une sauvegarde et regarder un PNJ admissible avant de tester R1.
 
-Le fichier `kcd.log` doit annoncer `[StreetTalk] Script loaded: 0.2.1 diagnostic`.
+Le fichier `kcd.log` doit annoncer `[StreetTalk] Script loaded: 0.2.2 diagnostic`.
 Les traces suivantes distinguent l'attente du joueur, l'installation des callbacks,
 la disponibilité d'une cible, l'affichage de l'invite R1 et l'envoi de la requête.
 Une erreur de binding et les contrôles de disponibilité manquants sont signalés
@@ -122,3 +123,24 @@ La boucle réessaie après une erreur au lieu de s'arrêter définitivement.
 Le journal fourni pour la v0.2.0 prouve le chargement du script au menu. Il ne
 prouve pas la cause de l'échec d'interaction dans une partie ; ne pas présenter
 ces changements comme une correction moteur confirmée avant un nouvel essai.
+
+## Disponibilité et conversation active (v0.2.2)
+
+La présence d'un dialogue de quête, de commerce ou de chat disponible n'exclut
+plus le PNJ. `CanChat` et un résultat non vide de `GetChatActions` ne servent
+plus de preuves d'une réponse actuellement attendue. L'entrée R1 du mod peut
+être proposée dans ce contexte ; l'interaction ordinaire de dialogue reste intacte.
+L'invite native de simple démarrage de chat ou de suivi cède sa place à l'entrée
+du mod sur ce chemin tant que le PNJ est admissible.
+
+En revanche, `IsWaitingForDialogueReply`, une requête `HasChatRequest` déjà lancée,
+une conversation `HasAcceptedChat`, un dialogue/monologue en cours ou une
+restriction de quête continuent d'interdire l'ouverture. Une demande native en
+attente est protégée même avant que son invite soit visible : elle a déjà été
+lancée par le jeu. Le simple fait de posséder un dialogue n'est pas une demande.
+
+Cette distinction est appliquée à l'affichage, au maintien de la map R1 et lors
+de l'appui. Une restriction de quête apparue après l'ouverture bloque aussi les
+choix du mod. La disponibilité antérieure d'un chat n'est plus interprétée comme
+un accusé de réception de la requête du mod. Tout ceci nécessite encore un essai
+dans le moteur KCD2, notamment l'arbitrage réel des maps de commandes.

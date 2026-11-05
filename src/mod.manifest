@@ -4,7 +4,7 @@
     <name>Street Talk — diagnostic</name>
     <description>Experimental native street chats: Saluer / Provoquer.</description>
     <author>IXSKY6000</author>
-    <version>0.2.1</version>
+    <version>0.2.2</version>
     <created_on>2026-11-05</created_on>
     <modid>street_talk</modid>
     <modifies_level>false</modifies_level>

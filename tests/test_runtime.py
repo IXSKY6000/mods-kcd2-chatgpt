@@ -97,7 +97,7 @@ class RuntimeTests(unittest.TestCase):
 
     def test_rejections_and_missing_capability(self):
         for flag in ['dead', 'unconscious', 'far', 'combat', 'tense', 'restricted',
-                     'inDialog', 'requested', 'accepted', 'canChat', 'waiting',
+                     'inDialog', 'requested', 'accepted', 'waiting',
                      'stealing', 'sitting', 'laying', 'humanDialog']:
             self.lua.globals()[flag] = True
             self.assertFalse(self.evaluate('StreetTalk.Available(npc,user)'), flag)
@@ -107,8 +107,8 @@ class RuntimeTests(unittest.TestCase):
         self.lua.execute('npc.human={}; DialogModule=nil')
         self.assertFalse(self.evaluate('StreetTalk.Available(npc,user)'))
 
-    def test_native_quest_and_follow_actions_have_priority(self):
-        self.lua.execute('StreetTalk.Install(g_gameRules); native=1')
+    def test_active_native_reply_keeps_its_original_handler(self):
+        self.lua.execute('StreetTalk.Install(g_gameRules); native=1; waiting=true')
         self.assertEqual(self.evaluate('g_gameRules:IsUsableForChat(npc)'), 1)
         self.lua.execute('g_gameRules:OnChatUsableMessage(npc)')
         self.assertEqual(self.evaluate('nativeMessages'), 1)
@@ -180,10 +180,10 @@ class RuntimeTests(unittest.TestCase):
         self.assertFalse(self.evaluate('StreetTalk.Open(npc,user)'))
         self.assertEqual(self.evaluate('#sent'), 0)
 
-    def test_native_action_appearing_after_render_preempts_r1_callback(self):
+    def test_native_reply_appearing_after_render_preempts_r1_callback(self):
         self.lua.execute('StreetTalk.Install(g_gameRules)')
         self.assertEqual(self.evaluate('g_gameRules:IsUsableForChat(npc)'), 1)
-        self.lua.execute('native=1')
+        self.lua.execute('native=1; waiting=true')
         self.assertFalse(self.evaluate('StreetTalk.Open(npc,user)'))
         self.assertEqual(self.evaluate('#sent'), 0)
 
@@ -197,7 +197,7 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(self.evaluate('useMessages'), 1)
         self.assertEqual(self.evaluate('actions[1]._action'), 'streettalk_open')
         self.assertEqual(self.evaluate('actions[1]._hintClass'), 1)
-        self.lua.execute('native=1; actions={}; g_gameRules:OnUsableMessage(npc)')
+        self.lua.execute('native=1; waiting=true; actions={}; g_gameRules:OnUsableMessage(npc)')
         self.assertEqual(self.evaluate('useMessages'), 2)
         self.assertEqual(self.evaluate('#actions'), 0)
 
@@ -233,4 +233,53 @@ class RuntimeTests(unittest.TestCase):
         self.assertFalse(self.evaluate('StreetTalk.CheckAvailable(npc,user)'))
 
     def test_startup_identifies_build_before_a_save_is_loaded(self):
-        self.assertTrue(self.evaluate("string.find(logs[1], '0.2.1 diagnostic') ~= nil"))
+        self.assertTrue(self.evaluate("string.find(logs[1], '0.2.2 diagnostic') ~= nil"))
+
+    def test_merely_available_chat_and_follow_do_not_block_opener(self):
+        self.lua.execute('StreetTalk.Install(g_gameRules); native=1; canChat=true')
+        self.assertTrue(self.evaluate('StreetTalk.CheckAvailable(npc,user)'))
+        self.lua.execute('g_gameRules:OnChatUsableMessage(npc)')
+        self.assertEqual(self.evaluate('actions[1]._action'), 'streettalk_open')
+        self.assertEqual(self.evaluate('nativeMessages'), 0)
+        self.assertTrue(self.evaluate('StreetTalk.Open(npc,user)'))
+        self.assertEqual(self.evaluate('#sent'), 1)
+
+    def test_normal_talk_action_is_preserved_with_available_native_chat(self):
+        self.lua.execute('StreetTalk.Install(g_gameRules); native=1; canChat=true; '
+                         'g_gameRules:OnUsableMessage(npc)')
+        self.assertEqual(self.evaluate('useMessages'), 1)
+        self.assertEqual(self.evaluate('actions[1]._action'), 'streettalk_open')
+
+    def test_pending_or_accepted_request_stays_protected_without_reply_hint(self):
+        for state in ('requested', 'accepted'):
+            self.lua.execute('StreetTalk.cooldowns={}; StreetTalk.pending=nil; canChat=true; '
+                             'waiting=false')
+            self.lua.globals()[state] = True
+            self.assertFalse(self.evaluate('StreetTalk.Open(npc,user)'))
+            self.lua.globals()[state] = False
+        self.assertEqual(self.evaluate('#sent'), 0)
+
+    def test_existing_availability_is_not_acknowledgement_of_our_request(self):
+        self.lua.execute('canChat=true; StreetTalk.Open(npc,user); StreetTalk.AwaitChat()')
+        self.assertTrue(self.evaluate('StreetTalk.pending ~= nil'))
+        self.lua.execute('requested=true; StreetTalk.AwaitChat()')
+        self.assertTrue(self.evaluate('StreetTalk.pending == nil'))
+
+    def test_live_control_map_yields_to_new_reply_but_not_available_chat(self):
+        self.lua.execute('''
+          enabled=false
+          ActionMapManager={EnableActionMap=function(name,value) enabled=value end}
+          StreetTalk.controlsLoaded=true
+          StreetTalk.Install(g_gameRules)
+          native=1; canChat=true
+          g_gameRules:OnUsableMessage(npc)
+          StreetTalk.Update()
+        ''')
+        self.assertTrue(self.evaluate('enabled'))
+        self.lua.execute('waiting=true; StreetTalk.Update()')
+        self.assertFalse(self.evaluate('enabled'))
+
+    def test_quest_restriction_starting_after_open_blocks_choices(self):
+        self.lua.execute('canChat=true; StreetTalk.Open(npc,user); restricted=true')
+        self.assertFalse(self.evaluate("StreetTalk.CanChoose('greet')"))
+        self.assertFalse(self.evaluate("StreetTalk.CanChoose('antagonize')"))

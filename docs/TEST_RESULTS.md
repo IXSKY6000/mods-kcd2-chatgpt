@@ -2,38 +2,32 @@
 
 5 novembre 2026, environnement Linux, Python 3.12.14, Lupa 2.6 / Lua 5.1.
 
-Commande : `python -m unittest discover -s tests -v`.
-Résultat : **18 tests exécutés, 18 réussis**, aucun ignoré.
+Version 0.2.2 : `python -m unittest discover -s tests -v`.
+Résultat : **29 tests exécutés, 29 réussis**, aucun ignoré.
 
-- Requêtes natives de chat et alias homme/femme.
-- Exclusions de contexte, priorité des actions natives, installation unique du hook.
-- Délai entre interactions, expiration, disparition du PNJ et erreur d'envoi.
-- Aucune acceptation automatique d'un chat potentiellement issu d'une quête.
-- Structure du paquet, ordre First/Second, conservation de la décision originale,
-  références manquantes ou ambiguës refusées et construction reproductible.
-- Audit des maps manette et refus de conclure lorsque les données sont absentes.
+- Construction reproductible, références manquantes/ambiguës refusées, ordre
+  Saluer/Provoquer et intégrité des graphes originaux avant ajout de la branche.
+- Map R1/RB dédiée et pont ajouté après le script SinglePlayer original.
+- Requêtes de chat homme/femme, double salutation puis délai, trois provocations
+  et refus temporaire, indépendance des compteurs, disparition du PNJ, expiration.
+- Exclusions de contexte, blocage après début de combat ou restriction de quête,
+  absence d'acceptation automatique des conversations natives.
+- Préservation des interactions ordinaires, reprise après erreur, diagnostics,
+  résultats booléens natifs numériques 0/1.
+- Chat simplement disponible et suivi disponible autorisés ; réponses attendues,
+  requêtes natives lancées et conversations acceptées protégées.
+- Désactivation de la map du mod à l'apparition d'une réponse native ; contrôle
+  renouvelé lors de l'appui R1. Une disponibilité préexistante ne sert pas
+  d'accusé de réception d'une nouvelle requête.
 
-Construction supplémentaire sur les XML du miroir communautaire au commit
-`9cb067543245ec5cf4e27b3d21e32485a35db518` : réussie, archive
-`dist/street_talk-prototype.zip` produite. Archives ZIP et PAK vérifiées sans erreur.
-Les graphes originaux restent structurellement identiques après retrait de la seule
-branche ajoutée. Les empreintes des deux fichiers source correspondent au rapport.
+Construction sur les XML du miroir communautaire au commit
+`9cb067543245ec5cf4e27b3d21e32485a35db518` ; contrôle des ZIP et PAK produits.
 
-**Non exécutés** : chargement du mod dans KCD2, validation Skald dans les outils
-officiels, lecture audio, commandes manette, rendu et conséquences de réputation.
-Le jeu, ses outils Windows et le profil réel du joueur ne sont pas présents ici.
-Ces vérifications sont nécessaires avant de considérer le mod comme fonctionnel.
+**Non exécutés** : chargement de cette version dans KCD2, validation Skald dans
+les outils officiels, lecture audio, rendu, arbitrage des entrées manette et
+conséquences de réputation. Le jeu et ses outils Windows sont absents ici.
 
-Version 0.2.0 : tests supplémentaires pour les deux salutations autorisées puis
-le délai de 90 secondes, les trois provocations et le refus temporaire, la
-décroissance et l’indépendance des compteurs, la réponse d’un autre PNJ,
-l’apparition tardive d’une réponse native et le début du combat après ouverture.
-Le paquet contient une map dédiée R1/RB ; son activation et l’arbitrage réel des
-entrées restent à valider dans KCD2.
-
-Version de diagnostic 0.2.1 : **23 tests hors jeu réussis**. Les nouveaux cas
-portent sur la préservation des interactions ordinaires lors de l'ajout de R1,
-les exceptions et la reprise de la boucle, les traces d'erreurs non répétées,
-les booléens natifs numériques (0/1), la trace de démarrage et la conservation
-du fichier SinglePlayer original avant ajout du pont de classe.
-Aucun de ces résultats ne valide l'exécution du mod dans KCD2.
+Le journal utilisateur prouve que la v0.2.0 était chargée au menu sur KCD2
+1.5.6, mais le joueur indique que l'interaction ne fonctionnait pas. Les versions
+0.2.1 et 0.2.2 restent des versions de test dont le fonctionnement en jeu doit
+être confirmé. Les réussites hors moteur ne constituent pas cette confirmation.

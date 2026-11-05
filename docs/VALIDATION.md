@@ -68,6 +68,21 @@ SinglePlayer, une entrée via les interactions ordinaires et une boucle résista
 aux exceptions. Vérifier les conflits avec les mods remplaçant SinglePlayer.lua.
 
 Après un essai, chercher `[StreetTalk]` et les erreurs Lua dans `kcd.log`.
-La ligne `Script loaded: 0.2.1 diagnostic` doit être présente dès le démarrage.
+Dans la version actuelle, la ligne `Script loaded: 0.2.2 diagnostic` doit être présente dès le démarrage.
 Le diagnostic ne désactive aucun contrôle de combat ou de réponse native pour
 forcer l'apparition de l'invite.
+
+## Distinction de la v0.2.2 à vérifier en jeu
+
+- Sur un commerçant ou un PNJ possédant un dialogue de quête disponible, R1 doit
+  proposer le mod si aucune conversation n'est engagée et aucune demande lancée.
+- Un chat disponible (`CanChat`) ou une option « Suivre » disponible ne doit pas
+  exclure le PNJ. L'interaction ordinaire de dialogue doit toujours être présente.
+- Une réponse native effectivement attendue doit rétablir le gestionnaire natif,
+  y compris si elle apparaît après l'affichage de l'invite du mod.
+- Une demande native déjà lancée/acceptée reste protégée, même avant une invite.
+- Déclencher une restriction de quête après l'ouverture doit empêcher les choix
+  du mod. Combat, incapacités et délais doivent toujours être respectés.
+- Vérifier que le moteur n'exécute pas les deux actions R1 simultanément quand
+  la disponibilité native et l'entrée du mod coexistent : les tests Lua ne
+  valident pas l'arbitrage des maps dans le moteur.

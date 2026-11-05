@@ -97,8 +97,9 @@ function ST.Eligible(npc, user)
     end
     if ST.Flag(DialogModule.IsSoulInDialog(user.this.id))
         or ST.Flag(DialogModule.IsSoulInDialog(npc.this.id)) then return false end
-    if ST.Flag(npc.actor:HasChatRequest()) or ST.Flag(npc.actor:HasAcceptedChat())
-        or ST.Flag(npc.actor:CanChat(user.id)) then return false end
+    -- CanChat only means a native chat is available. It does not mean a reply
+    -- is currently requested. Preserve actual requests/accepted conversations.
+    if ST.Flag(npc.actor:HasChatRequest()) or ST.Flag(npc.actor:HasAcceptedChat()) then return false end
     ST.Report('eligible', 'At least one NPC passed the eligibility checks.')
     return true
 end
@@ -121,6 +122,7 @@ function ST.CanChoose(kind)
         or ST.Flag(npc.soul:IsInCombatMode()) or ST.Flag(npc.soul:IsInCombatDanger())
         or ST.Flag(npc.soul:IsInTenseCircumstance()) or ST.Flag(user.player:IsSitting())
         or ST.Flag(user.player:IsLaying()) or ST.Flag(user.human:IsPickpocketing())
+        or ST.Flag(npc.soul:IsDialogRestricted(user.id))
         or not ST.Flag(user.actor:CanInteractWith(npc.id)) then return false end
     local state = ST.people[session.key] or {}
     if now() < (state.angryUntil or 0) or now() < ST.globalUntil then return false end
@@ -168,8 +170,11 @@ end
 
 -- These callbacks have the same (target, user, slotId) convention as BasicAIActions.
 function ST.Open(npc, user)
-    if ST.nativeCheck and ST.nativeCheck(g_gameRules, npc) ~= 0 then return false end
-    if not ST.Available(npc, user) then return false end
+    -- Recheck active replies at the press, not the mere presence of native hints.
+    if not ST.CheckAvailable(npc, user) then
+        ST.SetControls(false)
+        return false
+    end
     if not XGenAIModule or not table.MakeFromType or not IsFemale then
         log('Required native bindings unavailable; no chat was started.')
         return false
@@ -223,7 +228,8 @@ function ST.AwaitChat()
     if ST.Flag(npc.actor:HasChatRequest()) then
         ST.pending = nil
         log('Native Reply prompt available; confirm with the native chat button.')
-    elseif ST.Flag(npc.actor:CanChat(user.id)) then
+    elseif ST.Flag(npc.actor:HasAcceptedChat())
+        or ST.Flag(npc.actor:IsWaitingForDialogueReply()) then
         ST.pending = nil
         log('Native chat prompt available.')
     else
@@ -255,7 +261,6 @@ function ST.Install(rules)
         or type(rules.IsUsableForChat) ~= 'function'
         or type(rules.OnChatUsableMessage) ~= 'function' then return end
     local originalCheck = rules.IsUsableForChat
-    ST.nativeCheck = originalCheck
     local originalMessage = rules.OnChatUsableMessage
     -- Also expose the opener through the ordinary NPC interaction path. The
     -- engine may not query the chat interactor for a NPC that has no native chat.
@@ -263,17 +268,13 @@ function ST.Install(rules)
     local originalUseMessage = rules.OnUsableMessage
     rules.IsUsableForChat = function(self, npc)
         local native = originalCheck(self, npc)
-        if native ~= 0 then
-            ST.SetControls(false)
-            return native -- Quest chats and Follow take priority.
-        end
-        return ST.CheckAvailable(npc, g_localActor) and 1 or 0
+        if ST.CheckAvailable(npc, g_localActor) then return 1 end
+        ST.SetControls(false)
+        return native -- Keep every native interaction available when ST is blocked.
     end
     rules.OnChatUsableMessage = function(self, npc)
-        if originalCheck(self, npc) ~= 0 then
-            ST.SetControls(false)
-            return originalMessage(self, npc)
-        end
+        -- A nonempty GetChatActions may just contain Follow or a chat opener.
+        -- R1 goes to ST when safe; active native replies always go to the game.
         if ST.CheckAvailable(npc, g_localActor) then
             ST.focus = { npc = npc, seen = now() }
             g_localActor.player:AddLuaActions(ST.Actions())
@@ -287,17 +288,13 @@ function ST.Install(rules)
         rules.IsUsable = function(self, npc)
             local native = originalUseCheck(self, npc)
             if native ~= 0 then return native end
-            if originalCheck(self, npc) == 0 and ST.CheckAvailable(npc, g_localActor) then
+            if ST.CheckAvailable(npc, g_localActor) then
                 return 1
             end
             return native
         end
         rules.OnUsableMessage = function(self, npc)
             originalUseMessage(self, npc)
-            if originalCheck(self, npc) ~= 0 then
-                ST.SetControls(false)
-                return
-            end
             if ST.CheckAvailable(npc, g_localActor) then
                 ST.focus = { npc = npc, seen = now() }
                 g_localActor.player:AddLuaActions(ST.Actions(AHC_BASIC))
@@ -331,8 +328,7 @@ function ST.Update()
     end
     local focus = ST.focus
     local enabled = false
-    if focus and now() - focus.seen < 0.2 and ST.nativeCheck
-        and g_gameRules and ST.nativeCheck(g_gameRules, focus.npc) == 0 then
+    if focus and now() - focus.seen < 0.2 then
         enabled = ST.CheckAvailable(focus.npc, g_localActor)
     end
     ST.SetControls(enabled)
@@ -355,7 +351,7 @@ function ST.OnGameplayStarted()
     if not ok then ST.Report('event_error', 'Gameplay startup error: ' .. tostring(err)) end
 end
 
-log('Script loaded: 0.2.1 diagnostic build; gameplay not yet validated.')
+log('Script loaded: 0.2.2 diagnostic build; gameplay not yet validated.')
 ST.Install(SinglePlayer)
 if UIAction and UIAction.RegisterEventSystemListener then
     local ok, err = pcall(UIAction.RegisterEventSystemListener,
