@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ActionMaps version="1">
+  <actionmap name="street_talk">
+    <action name="streettalk_open" onPress="1" onRelease="0" onHold="0">
+      <xboxpad input="xi_shoulderr" />
+    </action>
+  </actionmap>
+</ActionMaps>
