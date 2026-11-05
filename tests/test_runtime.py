@@ -11,9 +11,11 @@ sent = {}
 actions = {}
 native = 0
 nativeMessages = 0
+useMessages = 0
+logs = {}
 System = {
   GetCurrTime = function() return clock end,
-  LogAlways = function() end,
+  LogAlways = function(message) logs[#logs+1]=message end,
   GetEntitiesInSphere = function() return nearby or {npc} end,
   GetEntity = function(id) if id == 1 then return user elseif id == 2 then return npc end end
 }
@@ -58,8 +60,19 @@ npc=makeActor(2)
 g_localActor=user
 g_gameRules={
   IsUsableForChat=function() return native end,
-  OnChatUsableMessage=function() nativeMessages=nativeMessages+1 end
+  OnChatUsableMessage=function() nativeMessages=nativeMessages+1 end,
+  IsUsable=function() return 1 end,
+  OnUsableMessage=function() useMessages=useMessages+1 end
 }
+AHC_CHAT=2; AHC_BASIC=1; AHT_PRESS=1; inr_chatFollow=3
+function Action()
+  local result={}
+  setmetatable(result,{__index=function(self,key)
+    return function(self,value) self['_'..key]=value; return self end
+  end})
+  return result
+end
+function AddInteractorAction(output,firstFast,action) output[#output+1]=action end
 '''
 
 
@@ -178,3 +191,46 @@ class RuntimeTests(unittest.TestCase):
         self.lua.execute('StreetTalk.Open(npc,user); combat=true')
         self.assertFalse(self.evaluate("StreetTalk.OnChoice('antagonize')"))
         self.assertTrue(self.evaluate('penalty == nil'))
+
+    def test_ordinary_interaction_preserves_native_and_adds_r1(self):
+        self.lua.execute('StreetTalk.Install(g_gameRules); g_gameRules:OnUsableMessage(npc)')
+        self.assertEqual(self.evaluate('useMessages'), 1)
+        self.assertEqual(self.evaluate('actions[1]._action'), 'streettalk_open')
+        self.assertEqual(self.evaluate('actions[1]._hintClass'), 1)
+        self.lua.execute('native=1; actions={}; g_gameRules:OnUsableMessage(npc)')
+        self.assertEqual(self.evaluate('useMessages'), 2)
+        self.assertEqual(self.evaluate('#actions'), 0)
+
+    def test_timer_reschedules_after_native_failure_and_reports_it(self):
+        self.lua.execute('StreetTalk.Update=function() error("native unavailable") end; '
+                         'StreetTalk.Tick()')
+        self.assertEqual(self.evaluate('timers[#timers]'), 'StreetTalk.Tick')
+        self.assertTrue(self.evaluate("string.find(logs[#logs], 'native unavailable') ~= nil"))
+
+    def test_eligibility_errors_are_reported_once(self):
+        self.lua.execute('npc.actor.IsDead=function() error("binding failed") end')
+        self.assertFalse(self.evaluate('StreetTalk.CheckAvailable(npc,user)'))
+        count = self.evaluate('#logs')
+        self.assertFalse(self.evaluate('StreetTalk.CheckAvailable(npc,user)'))
+        self.assertEqual(self.evaluate('#logs'), count)
+        self.assertTrue(self.evaluate("string.find(logs[#logs], 'binding failed') ~= nil"))
+
+    def test_native_numeric_zero_does_not_mean_dead_or_in_combat(self):
+        self.lua.execute('''
+          for _,entity in ipairs({npc,user}) do
+            for _,module in ipairs({'actor','human','soul','player'}) do
+              for name,method in pairs(entity[module]) do
+                if string.match(name,'^Is') or string.match(name,'^Has')
+                  or name=='CanChat' then entity[module][name]=function() return 0 end end
+              end
+            end
+            entity.actor.CanInteractWith=function() return 1 end
+          end
+          DialogModule.IsSoulInDialog=function() return false end
+        ''')
+        self.assertTrue(self.evaluate('StreetTalk.CheckAvailable(npc,user)'))
+        self.lua.execute('npc.actor.IsDead=function() return 1 end')
+        self.assertFalse(self.evaluate('StreetTalk.CheckAvailable(npc,user)'))
+
+    def test_startup_identifies_build_before_a_save_is_loaded(self):
+        self.assertTrue(self.evaluate("string.find(logs[1], '0.2.1 diagnostic') ~= nil"))

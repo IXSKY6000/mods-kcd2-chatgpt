@@ -30,3 +30,10 @@ décroissance et l’indépendance des compteurs, la réponse d’un autre PNJ,
 l’apparition tardive d’une réponse native et le début du combat après ouverture.
 Le paquet contient une map dédiée R1/RB ; son activation et l’arbitrage réel des
 entrées restent à valider dans KCD2.
+
+Version de diagnostic 0.2.1 : **23 tests hors jeu réussis**. Les nouveaux cas
+portent sur la préservation des interactions ordinaires lors de l'ajout de R1,
+les exceptions et la reprise de la boucle, les traces d'erreurs non répétées,
+les booléens natifs numériques (0/1), la trace de démarrage et la conservation
+du fichier SinglePlayer original avant ajout du pont de classe.
+Aucun de ces résultats ne valide l'exécution du mod dans KCD2.

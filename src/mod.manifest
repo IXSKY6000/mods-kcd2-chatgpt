@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <kcd_mod>
   <info>
-    <name>Street Talk — prototype</name>
+    <name>Street Talk — diagnostic</name>
     <description>Experimental native street chats: Saluer / Provoquer.</description>
     <author>IXSKY6000</author>
-    <version>0.2.0</version>
+    <version>0.2.1</version>
     <created_on>2026-11-05</created_on>
     <modid>street_talk</modid>
     <modifies_level>false</modifies_level>

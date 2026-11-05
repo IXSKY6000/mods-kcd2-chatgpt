@@ -112,11 +112,20 @@ def build(scripts_root: Path, output: Path) -> Path:
     henry_taunt = response(read(scripts_root,
         BASE / 'combat/nadavani/skirmish_nadavaci_chat.xml'),
         key='skir_henry_na_me_nemas_bLnx')
-    entries = {'Scripts/Mods/street_talk.lua':
+    rules_path = Path('Scripts/GameRules/SinglePlayer.lua')
+    rules = (scripts_root / rules_path).read_bytes()
+    # Install at class definition time, before the engine can cache callbacks.
+    # Keep the original file byte-for-byte and append only this bridge.
+    if b'function SinglePlayer:IsUsableForChat' not in rules:
+        raise ValueError('Unsupported SinglePlayer script; cannot install the early hook')
+    entries = {rules_path.as_posix(): rules + b'\n\n-- Street Talk early class hook\n'
+               b'if StreetTalk and StreetTalk.Install then StreetTalk.Install(SinglePlayer) end\n',
+               'Scripts/Mods/street_talk.lua':
                (PROJECT / 'src/Scripts/Mods/street_talk.lua').read_bytes(),
                'Libs/Config/street_talk.xml':
                (PROJECT / 'src/Libs/Config/street_talk.xml').read_bytes()}
-    report = {'status': 'experimental_not_game_validated', 'input_sha256': {},
+    report = {'status': 'diagnostic_not_game_validated', 'input_sha256': {
+                  rules_path.as_posix(): hashlib.sha256(rules).hexdigest()},
               'voice_references': {}, 'controller': 'R1_xi_shoulderr_engine_test_pending'}
     for gender, suffix, graph in [
         ('male', 'muz', 'zjednodusena_varianta_zdraveni'),

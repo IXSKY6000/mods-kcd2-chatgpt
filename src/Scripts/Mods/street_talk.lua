@@ -11,13 +11,19 @@ ST.angerSeconds = 180
 -- A missing readiness check must not turn into permission to steal R1.
 function ST.NativeReplyBusy(user)
     if not user or not user.actor.IsWaitingForDialogueReply
-        or not System.GetEntitiesInSphere or not user.GetWorldPos then return true end
-    if user.actor:IsWaitingForDialogueReply() then return true end
+        or not System.GetEntitiesInSphere or not user.GetWorldPos then
+        ST.Report('reply_api_missing', 'Blocked: quick-reply readiness binding unavailable.')
+        return true
+    end
+    if ST.Flag(user.actor:IsWaitingForDialogueReply()) then return true end
     for _, other in pairs(System.GetEntitiesInSphere(user:GetWorldPos(), 35) or {}) do
         if other.actor and other.human then
-            if not other.actor.IsWaitingForDialogueReply then return true end
-            if other.actor:IsWaitingForDialogueReply() or other.actor:HasChatRequest()
-                or other.actor:HasAcceptedChat() then return true end
+            if not other.actor.IsWaitingForDialogueReply then
+                ST.Report('nearby_reply_api_missing', 'Blocked: nearby actor reply status unavailable.')
+                return true
+            end
+            if ST.Flag(other.actor:IsWaitingForDialogueReply()) or ST.Flag(other.actor:HasChatRequest())
+                or ST.Flag(other.actor:HasAcceptedChat()) then return true end
         end
     end
     return false
@@ -26,13 +32,16 @@ end
 function ST.ContextSafe(npc, user)
     if not user.player or not user.human or not user.player.IsSitting
         or not user.player.IsLaying or not user.human.IsPickpocketing
-        or not user.human.IsInDialog or not npc.human.IsInDialog then return false end
-    if user.player:IsSitting() or user.player:IsLaying()
-        or user.human:IsPickpocketing() then return false end
-    if user.soul:IsInCombatDanger() or user.soul:IsInTenseCircumstance()
-        or user.soul:IsInCombatMode() or npc.soul:IsInCombatMode()
-        or npc.soul:IsInCombatDanger() or npc.soul:IsInTenseCircumstance() then return false end
-    if user.human:IsInDialog() or npc.human:IsInDialog() then return false end
+        or not user.human.IsInDialog or not npc.human.IsInDialog then
+        ST.Report('context_api_missing', 'Blocked: sitting/lying/pickpocket/dialogue binding unavailable.')
+        return false
+    end
+    if ST.Flag(user.player:IsSitting()) or ST.Flag(user.player:IsLaying())
+        or ST.Flag(user.human:IsPickpocketing()) then return false end
+    if ST.Flag(user.soul:IsInCombatDanger()) or ST.Flag(user.soul:IsInTenseCircumstance())
+        or ST.Flag(user.soul:IsInCombatMode()) or ST.Flag(npc.soul:IsInCombatMode())
+        or ST.Flag(npc.soul:IsInCombatDanger()) or ST.Flag(npc.soul:IsInTenseCircumstance()) then return false end
+    if ST.Flag(user.human:IsInDialog()) or ST.Flag(npc.human:IsInDialog()) then return false end
     return true
 end
 
@@ -46,23 +55,51 @@ local function now()
     return System.GetCurrTime()
 end
 
+-- Some engine bindings return 0/1; Lua treats numeric zero as truthy.
+function ST.Flag(value)
+    if type(value) == 'boolean' then return value end
+    if type(value) == 'number' then return value ~= 0 end
+    error('Unsupported native boolean result: ' .. type(value))
+end
+
+function ST.Report(key, message)
+    ST.reported = ST.reported or {}
+    if ST.reported[key] then return end
+    ST.reported[key] = true
+    log(message)
+end
+
+function ST.CheckAvailable(npc, user)
+    local ok, available = pcall(ST.Available, npc, user)
+    if not ok then
+        ST.Report('availability_error:' .. tostring(available),
+            'Eligibility error (interaction disabled): ' .. tostring(available))
+        return false
+    end
+    return available
+end
+
 function ST.Eligible(npc, user)
     if not npc or not user or npc == user or not npc.human or not npc.actor
         or not npc.soul or not npc.this or not user.actor or not user.soul
         or not user.this then return false end
-    if npc.actor:IsDead() or npc.actor:IsUnconscious()
-        or user.actor:IsDead() or user.actor:IsUnconscious() then return false end
+    if ST.Flag(npc.actor:IsDead()) or ST.Flag(npc.actor:IsUnconscious())
+        or ST.Flag(user.actor:IsDead()) or ST.Flag(user.actor:IsUnconscious()) then return false end
     if not ST.ContextSafe(npc, user) or ST.NativeReplyBusy(user) then return false end
-    if user.soul:IsInCombatDanger() or user.soul:IsInTenseCircumstance()
-        or npc.soul:IsInCombatMode() then return false end
-    if not user.actor:CanInteractWith(npc.id) then return false end
-    if npc.soul:IsDialogRestricted(user.id) then return false end
+    if ST.Flag(user.soul:IsInCombatDanger()) or ST.Flag(user.soul:IsInTenseCircumstance())
+        or ST.Flag(npc.soul:IsInCombatMode()) then return false end
+    if not ST.Flag(user.actor:CanInteractWith(npc.id)) then return false end
+    if ST.Flag(npc.soul:IsDialogRestricted(user.id)) then return false end
     -- Fail closed if the current runtime cannot check dialogue ownership.
-    if not DialogModule or not DialogModule.IsSoulInDialog then return false end
-    if DialogModule.IsSoulInDialog(user.this.id)
-        or DialogModule.IsSoulInDialog(npc.this.id) then return false end
-    if npc.actor:HasChatRequest() or npc.actor:HasAcceptedChat()
-        or npc.actor:CanChat(user.id) then return false end
+    if not DialogModule or not DialogModule.IsSoulInDialog then
+        ST.Report('dialog_api_missing', 'Blocked: DialogModule.IsSoulInDialog unavailable.')
+        return false
+    end
+    if ST.Flag(DialogModule.IsSoulInDialog(user.this.id))
+        or ST.Flag(DialogModule.IsSoulInDialog(npc.this.id)) then return false end
+    if ST.Flag(npc.actor:HasChatRequest()) or ST.Flag(npc.actor:HasAcceptedChat())
+        or ST.Flag(npc.actor:CanChat(user.id)) then return false end
+    ST.Report('eligible', 'At least one NPC passed the eligibility checks.')
     return true
 end
 
@@ -78,13 +115,13 @@ function ST.CanChoose(kind)
     if not session or now() > session.expires then return false end
     local npc, user = System.GetEntity(session.npcId), System.GetEntity(session.userId)
     if not npc or not user or npc ~= session.npc or user ~= session.user then return false end
-    if npc.actor:IsDead() or npc.actor:IsUnconscious() or user.actor:IsDead()
-        or user.actor:IsUnconscious() or user.soul:IsInCombatDanger()
-        or user.soul:IsInTenseCircumstance() or user.soul:IsInCombatMode()
-        or npc.soul:IsInCombatMode() or npc.soul:IsInCombatDanger()
-        or npc.soul:IsInTenseCircumstance() or user.player:IsSitting()
-        or user.player:IsLaying() or user.human:IsPickpocketing()
-        or not user.actor:CanInteractWith(npc.id) then return false end
+    if ST.Flag(npc.actor:IsDead()) or ST.Flag(npc.actor:IsUnconscious()) or ST.Flag(user.actor:IsDead())
+        or ST.Flag(user.actor:IsUnconscious()) or ST.Flag(user.soul:IsInCombatDanger())
+        or ST.Flag(user.soul:IsInTenseCircumstance()) or ST.Flag(user.soul:IsInCombatMode())
+        or ST.Flag(npc.soul:IsInCombatMode()) or ST.Flag(npc.soul:IsInCombatDanger())
+        or ST.Flag(npc.soul:IsInTenseCircumstance()) or ST.Flag(user.player:IsSitting())
+        or ST.Flag(user.player:IsLaying()) or ST.Flag(user.human:IsPickpocketing())
+        or not ST.Flag(user.actor:CanInteractWith(npc.id)) then return false end
     local state = ST.people[session.key] or {}
     if now() < (state.angryUntil or 0) or now() < ST.globalUntil then return false end
     if kind == 'greet' then return now() >= (state.greetUntil or 0) end
@@ -138,13 +175,18 @@ function ST.Open(npc, user)
         return false
     end
     local kind = 'dialog:chatRequest'
-    local request = table.MakeFromType(kind, {
+    local built, request = pcall(table.MakeFromType, kind, {
         alias = IsFemale(npc) and 'streettalk_female' or 'streettalk_male',
         metarole = 'NPC_ZDRAVI_HRACE',
         canBeDelayed = false,
         important = false,
         lookAtId = user.this.id
     })
+    if not built then
+        log('Unable to create native chat request: ' .. tostring(request))
+        return false
+    end
+    log('Sending native chat request: alias=' .. request.alias)
     ST.pending = { npcId = npc.id, userId = user.id, expires = now() + 3 }
     ST.session = { npcId = npc.id, userId = user.id, npc = npc, user = user,
         key = tostring(npc.this.id), expires = now() + 30, angry = false }
@@ -166,10 +208,10 @@ function ST.AwaitChat()
     local npc = System.GetEntity(pending.npcId)
     local user = System.GetEntity(pending.userId)
     if not npc or not user or not npc.actor or not user.actor
-        or now() > pending.expires or npc.actor:IsDead()
-        or npc.actor:IsUnconscious() or user.soul:IsInCombatDanger()
-        or user.soul:IsInTenseCircumstance()
-        or not user.actor:CanInteractWith(npc.id) then
+        or now() > pending.expires or ST.Flag(npc.actor:IsDead())
+        or ST.Flag(npc.actor:IsUnconscious()) or ST.Flag(user.soul:IsInCombatDanger())
+        or ST.Flag(user.soul:IsInTenseCircumstance())
+        or not ST.Flag(user.actor:CanInteractWith(npc.id)) then
         ST.pending = nil
         ST.session = nil
         log('Chat request cancelled or timed out.')
@@ -178,10 +220,10 @@ function ST.AwaitChat()
     -- Request processing is asynchronous; do not assume that sending means playing.
     -- Never auto-accept: the public API has no request ID and a quest could have
     -- requested a chat in the meantime. Let the native Reply action arbitrate.
-    if npc.actor:HasChatRequest() then
+    if ST.Flag(npc.actor:HasChatRequest()) then
         ST.pending = nil
         log('Native Reply prompt available; confirm with the native chat button.')
-    elseif npc.actor:CanChat(user.id) then
+    elseif ST.Flag(npc.actor:CanChat(user.id)) then
         ST.pending = nil
         log('Native chat prompt available.')
     else
@@ -189,13 +231,13 @@ function ST.AwaitChat()
     end
 end
 
-function ST.Actions()
+function ST.Actions(hintClass)
     local result = {}
     AddInteractorAction(result, false,
         Action():hint('Saluer / Provoquer'):action('streettalk_open')
             :hintType(AHT_PRESS):uiOrder(5):func(ST.Open)
             :interaction(inr_chatFollow):enabled(true)
-            :actionMap('street_talk'):hintClass(AHC_CHAT))
+            :actionMap('street_talk'):hintClass(hintClass or AHC_CHAT))
     return result
 end
 
@@ -215,22 +257,24 @@ function ST.Install(rules)
     local originalCheck = rules.IsUsableForChat
     ST.nativeCheck = originalCheck
     local originalMessage = rules.OnChatUsableMessage
+    -- Also expose the opener through the ordinary NPC interaction path. The
+    -- engine may not query the chat interactor for a NPC that has no native chat.
+    local originalUseCheck = rules.IsUsable
+    local originalUseMessage = rules.OnUsableMessage
     rules.IsUsableForChat = function(self, npc)
         local native = originalCheck(self, npc)
         if native ~= 0 then
             ST.SetControls(false)
             return native -- Quest chats and Follow take priority.
         end
-        local ok, available = pcall(ST.Available, npc, g_localActor)
-        return ok and available and 1 or 0
+        return ST.CheckAvailable(npc, g_localActor) and 1 or 0
     end
     rules.OnChatUsableMessage = function(self, npc)
         if originalCheck(self, npc) ~= 0 then
             ST.SetControls(false)
             return originalMessage(self, npc)
         end
-        local ok, available = pcall(ST.Available, npc, g_localActor)
-        if ok and available then
+        if ST.CheckAvailable(npc, g_localActor) then
             ST.focus = { npc = npc, seen = now() }
             g_localActor.player:AddLuaActions(ST.Actions())
             ST.SetControls(true)
@@ -239,28 +283,87 @@ function ST.Install(rules)
             return originalMessage(self, npc)
         end
     end
+    if type(originalUseCheck) == 'function' and type(originalUseMessage) == 'function' then
+        rules.IsUsable = function(self, npc)
+            local native = originalUseCheck(self, npc)
+            if native ~= 0 then return native end
+            if originalCheck(self, npc) == 0 and ST.CheckAvailable(npc, g_localActor) then
+                return 1
+            end
+            return native
+        end
+        rules.OnUsableMessage = function(self, npc)
+            originalUseMessage(self, npc)
+            if originalCheck(self, npc) ~= 0 then
+                ST.SetControls(false)
+                return
+            end
+            if ST.CheckAvailable(npc, g_localActor) then
+                ST.focus = { npc = npc, seen = now() }
+                g_localActor.player:AddLuaActions(ST.Actions(AHC_BASIC))
+                ST.SetControls(true)
+                ST.Report('normal_hint', 'R1 opener supplied through ordinary NPC interaction.')
+            else
+                ST.SetControls(false)
+            end
+        end
+    end
     rules.__streetTalkInstalled = true
     log('Native chat hooks installed (experimental).')
 end
 
-function ST.Tick()
+function ST.Update()
     -- Hook the live rules object, not just a prototype copied into NPC classes.
+    if not g_localActor then
+        ST.Report('waiting_player', 'Waiting for a loaded game/player.')
+        return
+    end
+    ST.Report('player_ready', 'Player available; starting runtime checks.')
     ST.Install(g_gameRules)
+    if not g_gameRules or not g_gameRules.__streetTalkInstalled then
+        ST.Report('rules_missing', 'Game rules callbacks not accessible; waiting for class hook.')
+    end
     if not ST.controlsLoaded and ActionMapManager and ActionMapManager.LoadFromXML then
         local ok = pcall(ActionMapManager.LoadFromXML, 'Libs/Config/street_talk.xml')
         ST.controlsLoaded = ok
+        ST.Report('controls_load:' .. tostring(ok),
+            'R1 map load call completed=' .. tostring(ok) .. ' (check engine XML errors too).')
     end
     local focus = ST.focus
     local enabled = false
     if focus and now() - focus.seen < 0.2 and ST.nativeCheck
         and g_gameRules and ST.nativeCheck(g_gameRules, focus.npc) == 0 then
-        local ok, available = pcall(ST.Available, focus.npc, g_localActor)
-        enabled = ok and available
+        enabled = ST.CheckAvailable(focus.npc, g_localActor)
     end
     ST.SetControls(enabled)
-    Script.SetTimerForFunction(100, 'StreetTalk.Tick')
 end
 
+function ST.Tick()
+    -- Always reschedule, even when a native API raises an error. Previously a
+    -- single error permanently stopped all subsequent startup/input checks.
+    local ok, err = pcall(ST.Update)
+    if not ok then
+        ST.Report('update_error:' .. tostring(err), 'Runtime update error: ' .. tostring(err))
+        pcall(ST.SetControls, false)
+    end
+    Script.SetTimerForFunction(ok and 100 or 1000, 'StreetTalk.Tick')
+end
+
+function ST.OnGameplayStarted()
+    ST.Report('gameplay_event', 'OnGameplayStarted received.')
+    local ok, err = pcall(ST.Update)
+    if not ok then ST.Report('event_error', 'Gameplay startup error: ' .. tostring(err)) end
+end
+
+log('Script loaded: 0.2.1 diagnostic build; gameplay not yet validated.')
+ST.Install(SinglePlayer)
+if UIAction and UIAction.RegisterEventSystemListener then
+    local ok, err = pcall(UIAction.RegisterEventSystemListener,
+        ST, 'System', 'OnGameplayStarted', 'OnGameplayStarted')
+    if not ok then log('Gameplay event registration failed: ' .. tostring(err)) end
+end
 if Script and Script.SetTimerForFunction then
     Script.SetTimerForFunction(1000, 'StreetTalk.Tick')
+else
+    log('ERROR: Script.SetTimerForFunction unavailable; no polling loop was started.')
 end

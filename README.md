@@ -3,7 +3,11 @@
 Prototype expérimental pour **KCD2 sur PC, à la manette**. Ce dépôt était vide.
 Il contient le code, le générateur de mod et les tests hors jeu.
 
-[Télécharger le prototype v0.2.0 sur GitHub](https://github.com/IXSKY6000/mods-kcd2-chatgpt/raw/refs/heads/main/downloads/street_talk-v0.2.0-experimental.zip)
+[Télécharger la version de diagnostic v0.2.1 sur GitHub](https://github.com/IXSKY6000/mods-kcd2-chatgpt/raw/refs/heads/main/downloads/street_talk-v0.2.1-diagnostic.zip)
+
+La v0.2.0 est détectée chez le joueur mais son interaction ne fonctionne pas.
+La v0.2.1 corrige des fragilités de démarrage, ajoute le chemin d’interaction
+ordinaire et des traces de diagnostic. Son fonctionnement en jeu reste à confirmer.
 **Ce n'est pas encore une version validée dans KCD2.**
 
 Comportement visé : regarder un PNJ proche, ouvrir un chat bref en restant libre
@@ -54,6 +58,9 @@ La présence d'un ZIP ne signifie pas que le mod fonctionne dans le moteur.
 Le générateur ajoute une branche inaccessible au parcours normal dans deux
 graphes de salutations existants. Le chat du mod vise ses alias directement.
 Il conserve les graphes de base pour leur enregistrement et leurs rôles vocaux.
+La v0.2.1 ajoute aussi un pont en fin de `Scripts/GameRules/SinglePlayer.lua`
+pour installer les callbacks dès la définition de la classe, avant leur éventuelle
+mise en cache par le moteur. Tout autre mod remplaçant ce fichier nécessite une fusion.
 Les fichiers du jeu sur disque ne sont jamais modifiés : seuls des remplacements
 sont écrits dans le `.pak` du mod. Un autre mod remplaçant ces mêmes graphes
 nécessite une fusion ; voir le rapport du build pour leurs chemins.
@@ -98,3 +105,20 @@ Ils valident la logique et les structures produites, pas le moteur KCD2.
 ## Références
 
 Voir [les sources et hypothèses d'intégration](docs/RESEARCH.md).
+
+## Diagnostic v0.2.1
+
+Remplacer l'ancien dossier `Mods/street_talk` par celui de la nouvelle archive.
+Garder `street_talk` dans `mod_order.txt` s'il existe. Fermer complètement le jeu,
+le relancer, charger une sauvegarde et regarder un PNJ admissible avant de tester R1.
+
+Le fichier `kcd.log` doit annoncer `[StreetTalk] Script loaded: 0.2.1 diagnostic`.
+Les traces suivantes distinguent l'attente du joueur, l'installation des callbacks,
+la disponibilité d'une cible, l'affichage de l'invite R1 et l'envoi de la requête.
+Une erreur de binding et les contrôles de disponibilité manquants sont signalés
+une seule fois par cause, sans exposer de données d'authentification.
+La boucle réessaie après une erreur au lieu de s'arrêter définitivement.
+
+Le journal fourni pour la v0.2.0 prouve le chargement du script au menu. Il ne
+prouve pas la cause de l'échec d'interaction dans une partie ; ne pas présenter
+ces changements comme une correction moteur confirmée avant un nouvel essai.

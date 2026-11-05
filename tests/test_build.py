@@ -25,6 +25,8 @@ def fixture(root):
         target = root / path
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(body, encoding='utf-8')
+    put(Path('Scripts/GameRules/SinglePlayer.lua'),
+        'SinglePlayer={}\nfunction SinglePlayer:IsUsableForChat(obj) return 0 end\n')
     put(builder.BASE / 'bff_pozdravy_a_rozlouceni/bff_zdravi_hrace_chatem__kubenka.xml',
         '<Database><Response Role="HRAC"><Text StringName="bff__hrac_pochvalen_bud_nrmQ" '
         'Text="Greeting"/></Response></Database>')
@@ -66,6 +68,10 @@ class BuildTests(unittest.TestCase):
                     action = mapping.find('./actionmap/action')
                     self.assertEqual(action.get('name'), 'streettalk_open')
                     self.assertEqual(action.find('xboxpad').get('input'), 'xi_shoulderr')
+                    rules = pak.read('Scripts/GameRules/SinglePlayer.lua')
+                    original = (root / 'source/Scripts/GameRules/SinglePlayer.lua').read_bytes()
+                    self.assertTrue(rules.startswith(original))
+                    self.assertIn(b'StreetTalk.Install(SinglePlayer)', rules)
                     self.assertEqual(len(graphs), 2)
                     for name in graphs:
                         tree = ET.fromstring(pak.read(name))
@@ -79,7 +85,7 @@ class BuildTests(unittest.TestCase):
                         self.assertEqual(choices[0].get('EntryScript'), "StreetTalk.OnChoice('greet')")
                         self.assertIsNotNone(choices[1].find('.//Sequence[@Name="streettalk_angry"]'))
                 report = json.loads(outer.read('street_talk/BUILD_REPORT.json'))
-                self.assertEqual(report['status'], 'experimental_not_game_validated')
+                self.assertEqual(report['status'], 'diagnostic_not_game_validated')
 
     def test_missing_voice_stops_build_without_partial_archive(self):
         with tempfile.TemporaryDirectory() as temp:

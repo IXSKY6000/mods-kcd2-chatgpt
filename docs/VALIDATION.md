@@ -57,3 +57,17 @@ Pour retirer le prototype, supprimer son dossier et son entrée éventuelle dans
 enregistre pas dans la sauvegarde.
 La réputation native éventuellement modifiée par Provoquer appartient toutefois
 à la progression du jeu ; utiliser la sauvegarde de test pour revenir en arrière.
+
+## Version de diagnostic 0.2.1
+
+Le journal utilisateur confirme le chargement de la v0.2.0 sur KCD2
+`1.5.6-15693-release_1_5`, mais cette version ne fonctionne pas chez le joueur.
+Le journal disponible s'arrête au menu et ne révèle pas la cause dans le monde.
+La version 0.2.1 ajoute une installation des hooks au chargement de la classe
+SinglePlayer, une entrée via les interactions ordinaires et une boucle résistante
+aux exceptions. Vérifier les conflits avec les mods remplaçant SinglePlayer.lua.
+
+Après un essai, chercher `[StreetTalk]` et les erreurs Lua dans `kcd.log`.
+La ligne `Script loaded: 0.2.1 diagnostic` doit être présente dès le démarrage.
+Le diagnostic ne désactive aucun contrôle de combat ou de réponse native pour
+forcer l'apparition de l'invite.
