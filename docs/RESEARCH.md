@@ -42,3 +42,26 @@ le format ont aussi été confrontés à `CryAction/ActionMapManager.cpp` de
 [la source CryEngine de référence](https://github.com/ValtoGameEngines/CryEngine).
 Cela ne prouve pas le comportement du fork KCD2 : l’arbitrage des maps et
 les réponses de quête doivent toujours être testés dans le jeu.
+
+## Constats de la v0.2.3
+
+`open_world/bff_pozdravy_a_rozlouceni.xml` et
+`open_world/reakce_na_stav_hrace.xml` déclarent chacun `VoiceNamespace=true` ;
+le dialogue de taunt de combat déclare également son propre namespace.
+La v0.2.3 conserve les réponses d'Henry dans `reakce_na_stav_hrace` et garde
+`ReferenceLength` quand présent. La salutation provient du chat de garde,
+clé neutre `npc__henry_bud_zdrav_KYdF`. La provocation provient de la variante
+homme/femme du chat générique, « Starej se o svý! ».
+
+Les réponses PNJ viennent du pool neutre `dec57` et du pool vexé `dec2`.
+Leurs attributs `VoiceoverReductionMaxSequences`, `VoiceoverReductionRole`,
+`VoiceCategory` et `VoiceCategoryRoles` sont conservés. La table
+`skald_character.xml` identifie `char_TULACKA_BARBORA` avec la voix 68 et les
+catégories `generic christian`. Cela ne constitue pas un inventaire de ses
+fichiers VF disponibles : ils sont absents de l'environnement.
+
+Les séquences sources utilisent `ExitScript` et non `EntryScript`. Le pont
+`CallScriptFunctionInTable` est attesté dans `Libs/Tables/text/dialogue_functions.xml`,
+notamment pour `DialogUtils.IsWealthyCustomer`. Les conditions du mod passent
+désormais par ce pont plutôt que par des appels Lua directs dans une expression
+Skald. La compatibilité finale du moteur reste à valider sur le jeu installé.

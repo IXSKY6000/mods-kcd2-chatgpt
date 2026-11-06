@@ -3,7 +3,7 @@
 Prototype expérimental pour **KCD2 sur PC, à la manette**. Ce dépôt était vide.
 Il contient le code, le générateur de mod et les tests hors jeu.
 
-[Télécharger la version de test v0.2.2 sur GitHub](https://github.com/IXSKY6000/mods-kcd2-chatgpt/raw/refs/heads/main/downloads/street_talk-v0.2.2-diagnostic.zip)
+[Télécharger la version de test v0.2.3 sur GitHub](https://github.com/IXSKY6000/mods-kcd2-chatgpt/raw/refs/heads/main/downloads/street_talk-v0.2.3-diagnostic.zip)
 
 La v0.2.0 est détectée chez le joueur mais son interaction ne fonctionne pas.
 La v0.2.1 corrige des fragilités de démarrage, ajoute le chemin d’interaction
@@ -29,6 +29,8 @@ aucune clé API. Le mod ne lance pas la fenêtre de dialogue complet.
 - Deux salutations consécutives autorisées par PNJ, puis 90 secondes de délai.
   Une courte protection de deux secondes empêche les doubles appuis ; les
   conversations occupées restent bloquées pendant leur déroulement.
+- Ouverture sans choix : protection courte de deux secondes. Le délai de
+  quinze secondes ne s’applique qu’après une provocation effectivement choisie.
 - Provocations espacées de 15 secondes. Trois provocations dans une fenêtre de
   trois minutes déclenchent une réponse plus vexée, une pénalité de relation
   supplémentaire et un refus du chat de trois minutes. Pas de combat forcé.
@@ -107,13 +109,13 @@ Ils valident la logique et les structures produites, pas le moteur KCD2.
 
 Voir [les sources et hypothèses d'intégration](docs/RESEARCH.md).
 
-## Diagnostic v0.2.2
+## Diagnostic v0.2.3
 
 Remplacer l'ancien dossier `Mods/street_talk` par celui de la nouvelle archive.
 Garder `street_talk` dans `mod_order.txt` s'il existe. Fermer complètement le jeu,
 le relancer, charger une sauvegarde et regarder un PNJ admissible avant de tester R1.
 
-Le fichier `kcd.log` doit annoncer `[StreetTalk] Script loaded: 0.2.2 diagnostic`.
+Le fichier `kcd.log` doit annoncer `[StreetTalk] Script loaded: 0.2.3 diagnostic`.
 Les traces suivantes distinguent l'attente du joueur, l'installation des callbacks,
 la disponibilité d'une cible, l'affichage de l'invite R1 et l'envoi de la requête.
 Une erreur de binding et les contrôles de disponibilité manquants sont signalés
@@ -144,3 +146,31 @@ de l'appui. Une restriction de quête apparue après l'ouverture bloque aussi le
 choix du mod. La disponibilité antérieure d'un chat n'est plus interprétée comme
 un accusé de réception de la requête du mod. Tout ceci nécessite encore un essai
 dans le moteur KCD2, notamment l'arbitrage réel des maps de commandes.
+
+## Correctifs texte, répétition et références vocales (v0.2.3)
+
+Le joueur a confirmé en VF que l'entrée revient après environ 15 secondes.
+Ce n'était donc pas une disparition permanente. L'ancien build appliquait ce
+délai dès l'ouverture, et utilisait un attribut `EntryScript` non attesté dans
+les séquences livrées. La v0.2.3 emploie `ExitScript` pour enregistrer le choix,
+ainsi que le pont d'expressions natif `CallScriptFunctionInTable` pour les
+conditions. Deux salutations sont permises, avec deux secondes de protection
+entre échanges, puis 90 secondes d'attente après la seconde. Une ouverture
+annulée ne consomme pas le quota et n'impose pas quinze secondes.
+
+L'invite utilise désormais `@ui_streettalk_open`, traduite par « Parler »,
+avec le glyphe de touche fourni par le moteur. Le libellé « Saluer / Provoquer »
+n'est plus envoyé comme une chaîne brute au HUD. Les deux choix restent dans le chat.
+
+Henry utilisait des clés issues des namespaces BFF et combat dans un graphe du
+namespace `reakce_na_stav_hrace`. Le nouveau build choisit des réponses de ce
+même namespace : une salutation brève et une réplique de provocation neutre.
+Les durées de référence sont conservées. Pour les PNJ, les décisions natives de
+réponse sont réutilisées avec leurs variantes, catégories et métadonnées de
+sélection vocale, sans scripts de quête ni remplacement de la voix du personnage.
+
+Cela corrige les références et la sélection dans le paquet ; **le résultat
+audio n'a pas été écouté dans KCD2 ici**, particulièrement pour Bára. Si elle
+reste muette après ce correctif, joindre le nouveau `kcd.log` après un essai et
+préciser si c'est Saluer, Provoquer ou les deux. Les fichiers VF ne sont pas
+présents sur la machine cloud et ne sont pas redistribués dans le mod.

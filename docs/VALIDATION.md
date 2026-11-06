@@ -86,3 +86,20 @@ forcer l'apparition de l'invite.
 - Vérifier que le moteur n'exécute pas les deux actions R1 simultanément quand
   la disponibilité native et l'entrée du mod coexistent : les tests Lua ne
   valident pas l'arbitrage des maps dans le moteur.
+
+## Vérifications de la v0.2.3 (VF)
+
+- L'invite R1/RB affiche « Parler » sans arobase ni clé de traduction brute.
+- Après un premier salut et la fin du chat, un deuxième salut doit être possible
+  dès la courte protection de deux secondes écoulée. Le troisième doit attendre
+  90 secondes. Une annulation d'ouverture ne compte pas comme salutation.
+- Vérifier les traces `Choice committed: greet` et `Choice committed: antagonize`.
+  Une trace `Choice callback rejected` indique un contrôle de session à examiner.
+- Écouter Henry sur Saluer et Provoquer, puis Bára sur les deux choix. Comparer
+  avec un homme et une autre femme génériques. La sélection vocale native est
+  conservée, mais sa résolution des fichiers VF n'est pas vérifiable hors jeu.
+- Confirmer dans Skald/moteur les appels `CallScriptFunctionInTable` dans les
+  conditions, l'exécution d'`ExitScript` avant la décision de réaction suivante,
+  et la remise à disposition des choix déjà utilisés (`GrayOutIfSequencesUsed=Never`).
+- Si une voix reste muette, recueillir le log après l'essai : ne pas attribuer
+  une autre voix au PNJ ni distribuer des fichiers VF pour masquer l'erreur.

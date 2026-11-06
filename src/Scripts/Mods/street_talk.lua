@@ -131,7 +131,10 @@ function ST.CanChoose(kind)
 end
 
 function ST.OnChoice(kind)
-    if not ST.CanChoose(kind) then return false end
+    if not ST.CanChoose(kind) then
+        ST.Report('choice_rejected', 'Choice callback rejected by session/context checks.')
+        return false
+    end
     local session = ST.session
     local state = ST.people[session.key] or {}
     ST.people[session.key] = state
@@ -149,6 +152,7 @@ function ST.OnChoice(kind)
         ST.globalUntil = now() + 2
         ST.cooldowns[session.key] = now() + 2
     else
+        ST.cooldowns[session.key] = now() + ST.cooldownSeconds
         if now() > (state.lastProvoked or -math.huge) + ST.angerSeconds then
             state.strikes = 0
         end
@@ -161,8 +165,13 @@ function ST.OnChoice(kind)
             session.npc.soul:ModifyPlayerReputation('quest_decrease_2_minor', true)
         end
     end
+    log('Choice committed: ' .. kind)
     return true
 end
+
+-- Dialogue conditions use the engine expression language, not arbitrary Lua.
+function ST.CanGreet() return ST.CanChoose('greet') end
+function ST.CanAntagonize() return ST.CanChoose('antagonize') end
 
 function ST.IsAngry()
     return ST.session and ST.session.angry == true or false
@@ -195,7 +204,9 @@ function ST.Open(npc, user)
     ST.pending = { npcId = npc.id, userId = user.id, expires = now() + 3 }
     ST.session = { npcId = npc.id, userId = user.id, npc = npc, user = user,
         key = tostring(npc.this.id), expires = now() + 30, angry = false }
-    ST.cooldowns[tostring(npc.this.id)] = now() + ST.cooldownSeconds
+    -- Opening/cancelling is not a provocation: reserve the 15s delay for a
+    -- committed antagonize choice. Pending/native conversations still block R1.
+    ST.cooldowns[tostring(npc.this.id)] = now() + 2
     local ok, err = pcall(XGenAIModule.SendMessageToEntityData, npc.this.id, kind, request)
     if not ok then
         ST.pending = nil
@@ -240,7 +251,7 @@ end
 function ST.Actions(hintClass)
     local result = {}
     AddInteractorAction(result, false,
-        Action():hint('Saluer / Provoquer'):action('streettalk_open')
+        Action():hint('@ui_streettalk_open'):action('streettalk_open')
             :hintType(AHT_PRESS):uiOrder(5):func(ST.Open)
             :interaction(inr_chatFollow):enabled(true)
             :actionMap('street_talk'):hintClass(hintClass or AHC_CHAT))
@@ -351,7 +362,7 @@ function ST.OnGameplayStarted()
     if not ok then ST.Report('event_error', 'Gameplay startup error: ' .. tostring(err)) end
 end
 
-log('Script loaded: 0.2.2 diagnostic build; gameplay not yet validated.')
+log('Script loaded: 0.2.3 diagnostic build; gameplay not yet validated.')
 ST.Install(SinglePlayer)
 if UIAction and UIAction.RegisterEventSystemListener then
     local ok, err = pcall(UIAction.RegisterEventSystemListener,

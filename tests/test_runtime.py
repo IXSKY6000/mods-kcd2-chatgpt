@@ -123,13 +123,11 @@ class RuntimeTests(unittest.TestCase):
         self.assertTrue(self.evaluate('StreetTalk.pending == nil'))
         self.assertEqual(self.evaluate('#sent'), 1)
 
-    def test_cooldown_and_pending_timeout(self):
+    def test_cancelled_opening_does_not_apply_provocation_cooldown(self):
         self.assertTrue(self.evaluate('StreetTalk.Open(npc,user)'))
         self.assertFalse(self.evaluate('StreetTalk.Open(npc,user)'))
         self.lua.execute('clock=104; StreetTalk.AwaitChat()')
         self.assertTrue(self.evaluate('StreetTalk.pending == nil'))
-        self.assertFalse(self.evaluate('StreetTalk.Available(npc,user)'))
-        self.lua.execute('clock=116')
         self.assertTrue(self.evaluate('StreetTalk.Available(npc,user)'))
 
     def test_failed_send_clears_pending(self):
@@ -233,7 +231,7 @@ class RuntimeTests(unittest.TestCase):
         self.assertFalse(self.evaluate('StreetTalk.CheckAvailable(npc,user)'))
 
     def test_startup_identifies_build_before_a_save_is_loaded(self):
-        self.assertTrue(self.evaluate("string.find(logs[1], '0.2.2 diagnostic') ~= nil"))
+        self.assertTrue(self.evaluate("string.find(logs[1], '0.2.3 diagnostic') ~= nil"))
 
     def test_merely_available_chat_and_follow_do_not_block_opener(self):
         self.lua.execute('StreetTalk.Install(g_gameRules); native=1; canChat=true')
@@ -283,3 +281,34 @@ class RuntimeTests(unittest.TestCase):
         self.lua.execute('canChat=true; StreetTalk.Open(npc,user); restricted=true')
         self.assertFalse(self.evaluate("StreetTalk.CanChoose('greet')"))
         self.assertFalse(self.evaluate("StreetTalk.CanChoose('antagonize')"))
+
+    def test_generated_native_callbacks_commit_two_greetings_then_wait(self):
+        from test_build import builder, fixture
+        import tempfile, zipfile, io, xml.etree.ElementTree as ET
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            fixture(root / 'source')
+            package = builder.build(root / 'source', root / 'out')
+            with zipfile.ZipFile(package) as outer:
+                with zipfile.ZipFile(io.BytesIO(outer.read('street_talk/Data/street_talk.pak'))) as pak:
+                    name = next(n for n in pak.namelist() if n.startswith('Quests/'))
+                    graph = ET.fromstring(pak.read(name))
+            sequence = graph.find('.//Sequence[@Name="streettalk_greet"]')
+            self.lua.execute('CallScriptFunctionInTable=function(t,f) return _G[t][f]() end')
+            for clock in (100, 103):
+                self.lua.execute(f'clock={clock}; StreetTalk.pending=nil; StreetTalk.Open(npc,user)')
+                self.assertTrue(self.evaluate(sequence.get('EntryCondition')))
+                self.lua.execute(sequence.get('ExitScript'))
+            self.lua.execute('clock=106; StreetTalk.pending=nil; StreetTalk.Open(npc,user)')
+            self.assertFalse(self.evaluate(sequence.get('EntryCondition')))
+            self.assertEqual(self.evaluate("StreetTalk.people['wuid2'].greets"), 2)
+
+    def test_provocation_delay_begins_on_committed_choice(self):
+        self.lua.execute("StreetTalk.Open(npc,user); StreetTalk.OnChoice('antagonize'); "
+                         'clock=104; StreetTalk.pending=nil')
+        self.assertFalse(self.evaluate('StreetTalk.Available(npc,user)'))
+        self.lua.execute('clock=116')
+        self.assertTrue(self.evaluate('StreetTalk.Available(npc,user)'))
+
+    def test_opener_uses_localization_key_not_literal_slash_label(self):
+        self.assertEqual(self.evaluate('StreetTalk.Actions()[1]._hint'), '@ui_streettalk_open')

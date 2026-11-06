@@ -27,28 +27,41 @@ def fixture(root):
         target.write_text(body, encoding='utf-8')
     put(Path('Scripts/GameRules/SinglePlayer.lua'),
         'SinglePlayer={}\nfunction SinglePlayer:IsUsableForChat(obj) return 0 end\n')
-    put(builder.BASE / 'bff_pozdravy_a_rozlouceni/bff_zdravi_hrace_chatem__kubenka.xml',
-        '<Database><Response Role="HRAC"><Text StringName="bff__hrac_pochvalen_bud_nrmQ" '
-        'Text="Greeting"/></Response></Database>')
-    put(builder.BASE / 'combat/nadavani/skirmish_nadavaci_chat.xml',
-        '<Database><Response Role="HRAC"><Text StringName="skir_henry_na_me_nemas_bLnx" '
-        'Text="Taunt"/></Response></Database>')
+    put(builder.REACTIONS / 'npc_zdravi_hrace_chatem__straz/npc_zdravi_hrace_chatem__straz.xml',
+        '<Database><Response Role="HRAC" ReferenceLength="1.25">'
+        '<Text StringName="npc__henry_bud_zdrav_KYdF" Text="Greeting"/></Response></Database>')
     for suffix, graph in [('muz', 'zjednodusena_varianta_zdraveni'),
                           ('zena', 'zjednodusena_varianta_zdraveni_1')]:
         role = 'NPC_ZDRAVI_HRACE_' + suffix.upper()
+        taunt = 'zjed_hrac_starej_se_o_svy_IfYh' if suffix == 'muz' else 'zjed_hrac_starej_se_o_svy_jLKM'
         put(builder.REACTIONS / graph / (graph + '.xml'),
             '<Database><Skald><Dialog Name="original"><Ports/>'
             '<Dialogue Type="chat"><Decision Name="original"><Sequences>'
             '<Sequence Name="original" EndType="EndDialogue"><Elements>'
+            f'<Response Role="HRAC"><Text StringName="{taunt}" Text="Taunt"/></Response>'
             f'<Response Role="{role}"><Text StringName="reply_{suffix}" '
             'Text="Nezdvořák..."/></Response>'
             f'<Response Role="{role}"><Text StringName="angry_{suffix}" '
             'Text="Jako vážně?!"/></Response></Elements></Sequence>'
-            '</Sequences></Decision></Dialogue></Dialog></Skald></Database>')
+            '</Sequences></Decision><Decision Name="dec2" VoiceoverReductionMaxSequences="1" '
+            f'VoiceoverReductionRole="{role}"><Sequences>'
+            '<Sequence Name="r1" EndType="EndDialogue"><Elements>'
+            f'<Response Role="{role}"><Text StringName="r1_{suffix}" Text="Reply one"/>'
+            '</Response></Elements></Sequence>'
+            '<Sequence Name="r2" EndType="EndDialogue" VoiceCategory="christian" '
+            f'VoiceCategoryRoles="{role}"><Elements><Response Role="{role}">'
+            f'<Text StringName="r2_{suffix}" Text="Reply two"/></Response></Elements>'
+            '</Sequence></Sequences></Decision></Dialogue></Dialog></Skald></Database>')
         name = 'pozdravy_k_hraci_ve_svete__' + suffix
         put(builder.REACTIONS / name / (name + '.xml'),
-            f'<Database><Response Role="{role}"><Text StringName="hello_{suffix}" '
-            'Text="Zdravím."/></Response></Database>')
+            f'<Database><Decision Name="dec57" VoiceoverReductionMaxSequences="1" '
+            f'VoiceoverReductionRole="{role}"><Sequences><Sequence Name="hello" '
+            f'EndType="EndDialogue"><Elements><Response Role="{role}">'
+            f'<Text StringName="hello_{suffix}" Text="Zdravím."/></Response></Elements></Sequence>'
+            '<Sequence Name="hello_alt" EndType="EndDialogue" VoiceCategory="christian" '
+            f'VoiceCategoryRoles="{role}"><Elements><Response Role="{role}">'
+            f'<Text StringName="hello_alt_{suffix}" Text="Greeting two"/></Response>'
+            '</Elements></Sequence></Sequences></Decision></Database>')
 
 
 class BuildTests(unittest.TestCase):
@@ -82,7 +95,20 @@ class BuildTests(unittest.TestCase):
                         self.assertEqual([c.find('UiPrompt').get('Text') for c in choices], ['Saluer', 'Provoquer'])
                         self.assertEqual([r.get('Role') for r in choices[0].findall('Elements/Response')][0], 'HRAC')
                         self.assertEqual(choices[1].get('Reputation'), 'greeting_decrease')
-                        self.assertEqual(choices[0].get('EntryScript'), "StreetTalk.OnChoice('greet')")
+                        self.assertIsNone(choices[0].get('EntryScript'))
+                        self.assertEqual(choices[0].get('ExitScript'), "StreetTalk.OnChoice('greet')")
+                        self.assertEqual(choices[0].get('EntryCondition'),
+                            "CallScriptFunctionInTable('StreetTalk','CanGreet')")
+                        greeting = choices[0].find('Elements/Response')
+                        self.assertEqual(greeting.get('ReferenceLength'), '1.25')
+                        self.assertEqual(greeting.find('Text').get('StringName'), 'npc__henry_bud_zdrav_KYdF')
+                        pool = choices[0].find('Decision')
+                        self.assertEqual(pool.get('VoiceoverReductionMaxSequences'), '1')
+                        self.assertEqual(len(pool.findall('Sequences/Sequence')), 2)
+                        self.assertEqual(pool.find('Sequences/Sequence[@VoiceCategory="christian"]').get('VoiceCategoryRoles'),
+                            pool.get('VoiceoverReductionRole'))
+                        self.assertFalse(any('bff__' in t.get('StringName','') or 'skir_henry' in t.get('StringName','')
+                                             for t in choices[0].findall('.//Text')))
                         self.assertIsNotNone(choices[1].find('.//Sequence[@Name="streettalk_angry"]'))
                 report = json.loads(outer.read('street_talk/BUILD_REPORT.json'))
                 self.assertEqual(report['status'], 'diagnostic_not_game_validated')
@@ -91,7 +117,7 @@ class BuildTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             fixture(root / 'source')
-            p = next((root / 'source').rglob('bff_zdravi*.xml'))
+            p = next((root / 'source').rglob('npc_zdravi_hrace_chatem__straz.xml'))
             p.write_text('<Database/>')
             with self.assertRaises(ValueError):
                 builder.build(root / 'source', root / 'out')
@@ -102,6 +128,25 @@ class BuildTests(unittest.TestCase):
                              '<Response Role="HRAC"><Text StringName="x"/></Response></Root>')
         with self.assertRaises(ValueError):
             builder.response(tree, key='x')
+
+    def test_localized_opener_label_is_packaged(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            fixture(root / 'source')
+            package = builder.build(root / 'source', root / 'out')
+            import io
+            with zipfile.ZipFile(package) as outer:
+                with zipfile.ZipFile(io.BytesIO(outer.read('street_talk/Localization/French_xml.pak'))) as pak:
+                    rows = ET.fromstring(pak.read('text__street_talk.xml')).findall('Row')
+                    labels = {r.findall('Cell')[0].text: r.findall('Cell')[1].text for r in rows}
+                    self.assertEqual(labels['ui_streettalk_open'], 'Parler')
+
+    def test_reply_pool_preserves_voice_selection_and_rejects_gameplay_logic(self):
+        source = ET.fromstring('<Root><Decision Name="dec57"><Sequences>'
+            '<Sequence Name="unsafe" EndType="GoTo" GoToDecision="quest"/>'
+            '</Sequences></Decision></Root>')
+        with self.assertRaises(ValueError):
+            builder.reply_pool(source, 'dec57', 'test')
 
 
 class ControlTests(unittest.TestCase):

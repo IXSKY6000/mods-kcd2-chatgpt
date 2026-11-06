@@ -39,8 +39,27 @@ def response(root: ET.Element, *, key: str | None = None,
     if len(matches) != 1:
         raise ValueError(f'Expected one voice reference: {key or text!r}; found {len(matches)}')
     # Keep the original StringName and Role. Strip situational animations and scripts.
-    result = ET.Element('Response', {'Role': matches[0].get('Role')})
+    result = ET.Element('Response', {k: v for k, v in matches[0].attrib.items()
+        if k in ('Role', 'ReferenceLength', 'StartDelay', 'EndDelay', 'Volume')})
     result.append(copy.deepcopy(matches[0].find('Text')))
+    return result
+
+
+def reply_pool(source: ET.Element, name: str, prefix: str) -> ET.Element:
+    """Keep native voice selection/category metadata instead of forcing one take."""
+    matches = source.findall(f'.//Decision[@Name="{name}"]')
+    if len(matches) != 1:
+        raise ValueError(f'Expected one native reply pool: {name}')
+    result = copy.deepcopy(matches[0])
+    for sequence in result.findall('.//Sequence'):
+        if sequence.get('EndType') != 'EndDialogue' or sequence.find('Triggers') is not None:
+            raise ValueError('Reply pool contains nonterminal gameplay logic')
+        if any(k.endswith('Script') for k in sequence.attrib):
+            raise ValueError('Reply pool contains gameplay scripts')
+    for node in result.iter():
+        if node.tag in ('Decision', 'Sequence'):
+            node.set('Name', prefix + '_' + node.get('Name', 'node'))
+    result.set('Autoselect', 'true')
     return result
 
 
@@ -68,10 +87,12 @@ def patch_dialog(source: ET.Element, gender: str, lines: dict) -> ET.Element:
     choices = ET.SubElement(decision, 'Sequences')
     for kind, position, label in [('greet', 'First', 'Saluer'),
                                   ('antagonize', 'Second', 'Provoquer')]:
-        attrs = {'Name': 'streettalk_' + kind, 'EndType': 'EndDialogue',
+        method = 'CanGreet' if kind == 'greet' else 'CanAntagonize'
+        attrs = {'Name': 'streettalk_' + kind, 'EndType': 'Decision',
                  'ChatPosition': position,
-                 'EntryCondition': f"StreetTalk.CanChoose('{kind}')",
-                 'EntryScript': f"StreetTalk.OnChoice('{kind}')"}
+                 'GrayOutIfSequencesUsed': 'Never',
+                 'EntryCondition': f"CallScriptFunctionInTable('StreetTalk','{method}')",
+                 'ExitScript': f"StreetTalk.OnChoice('{kind}')"}
         if kind == 'antagonize':
             attrs['Reputation'] = 'greeting_decrease'
             attrs['EndType'] = 'Decision'
@@ -81,18 +102,23 @@ def patch_dialog(source: ET.Element, gender: str, lines: dict) -> ET.Element:
         elements = ET.SubElement(sequence, 'Elements')
         elements.append(copy.deepcopy(lines[kind]['henry']))
         if kind == 'greet':
-            elements.append(copy.deepcopy(lines[kind]['npc']))
+            sequence.append(copy.deepcopy(lines[kind]['pool']))
         else:
             reaction = ET.SubElement(sequence, 'Decision', {
                 'Name': 'streettalk_reaction', 'Autoselect': 'true', 'Priority': 'General'})
             reactions = ET.SubElement(reaction, 'Sequences')
-            for angry, condition in [(False, 'not StreetTalk.IsAngry()'),
-                                     (True, 'StreetTalk.IsAngry()')]:
+            for angry, condition in [(False, "!CallScriptFunctionInTable('StreetTalk','IsAngry')"),
+                                     (True, "CallScriptFunctionInTable('StreetTalk','IsAngry')")]:
                 item = ET.SubElement(reactions, 'Sequence', {
                     'Name': 'streettalk_angry' if angry else 'streettalk_irritated',
-                    'EntryCondition': condition, 'EndType': 'EndDialogue'})
+                    'EntryCondition': condition, 'EndType': 'Decision'})
                 body = ET.SubElement(item, 'Elements')
-                body.append(copy.deepcopy(lines[kind]['angry' if angry else 'npc']))
+                ET.SubElement(body, 'Response', {'Role': lines[kind]['npc_role']})
+                pool = copy.deepcopy(lines[kind]['pool'])
+                for node in pool.iter():
+                    if node.tag in ('Decision', 'Sequence'):
+                        node.set('Name', ('angry_' if angry else 'irritated_') + node.get('Name'))
+                item.append(pool)
     return result
 
 
@@ -106,12 +132,11 @@ def write_pak(path: Path, entries: dict[str, bytes]) -> None:
 
 def build(scripts_root: Path, output: Path) -> Path:
     output.mkdir(parents=True, exist_ok=True)
-    henry_greet = response(read(scripts_root,
-        BASE / 'bff_pozdravy_a_rozlouceni/bff_zdravi_hrace_chatem__kubenka.xml'),
-        key='bff__hrac_pochvalen_bud_nrmQ')
-    henry_taunt = response(read(scripts_root,
-        BASE / 'combat/nadavani/skirmish_nadavaci_chat.xml'),
-        key='skir_henry_na_me_nemas_bLnx')
+    # Stay inside the original reakce_na_stav_hrace voice namespace. StringName
+    # alone cannot relocate audio from the BFF/combat namespaces used before.
+    henry_greet_path = REACTIONS / 'npc_zdravi_hrace_chatem__straz/npc_zdravi_hrace_chatem__straz.xml'
+    henry_greet = response(read(scripts_root, henry_greet_path),
+                           key='npc__henry_bud_zdrav_KYdF')
     rules_path = Path('Scripts/GameRules/SinglePlayer.lua')
     rules = (scripts_root / rules_path).read_bytes()
     # Install at class definition time, before the engine can cache callbacks.
@@ -125,7 +150,10 @@ def build(scripts_root: Path, output: Path) -> Path:
                'Libs/Config/street_talk.xml':
                (PROJECT / 'src/Libs/Config/street_talk.xml').read_bytes()}
     report = {'status': 'diagnostic_not_game_validated', 'input_sha256': {
-                  rules_path.as_posix(): hashlib.sha256(rules).hexdigest()},
+                  rules_path.as_posix(): hashlib.sha256(rules).hexdigest(),
+                  henry_greet_path.as_posix(): hashlib.sha256((scripts_root / henry_greet_path).read_bytes()).hexdigest()},
+              'voice_namespace': 'reakce_na_stav_hrace',
+              'audio_resolution_status': 'references_repaired_not_auditioned',
               'voice_references': {}, 'controller': 'R1_xi_shoulderr_engine_test_pending'}
     for gender, suffix, graph in [
         ('male', 'muz', 'zjednodusena_varianta_zdraveni'),
@@ -135,20 +163,27 @@ def build(scripts_root: Path, output: Path) -> Path:
         role = 'NPC_ZDRAVI_HRACE_' + suffix.upper()
         greet_path = REACTIONS / ('pozdravy_k_hraci_ve_svete__' + suffix)
         greetings = read(scripts_root, greet_path / (greet_path.name + '.xml'))
+        greeting_source = greet_path / (greet_path.name + '.xml')
+        report['input_sha256'][greeting_source.as_posix()] = hashlib.sha256(
+            (scripts_root / greeting_source).read_bytes()).hexdigest()
+        henry_taunt = response(source, key=(
+            'zjed_hrac_starej_se_o_svy_IfYh' if gender == 'male'
+            else 'zjed_hrac_starej_se_o_svy_jLKM'))
         lines = {
             'greet': {'henry': henry_greet,
-                      'npc': response(greetings, role=role, text='Zdravím.')},
+                      'pool': reply_pool(greetings, 'dec57', 'streettalk_greetings')},
             'antagonize': {'henry': henry_taunt,
-                          'npc': response(source, role=role, text='Nezdvořák...'),
-                          'angry': response(source, role=role, text='Jako vážně?!')}}
+                          'npc_role': role,
+                          'pool': reply_pool(source, 'dec2', 'streettalk_replies')}}
         entries[path.as_posix()] = xml_bytes(patch_dialog(source, gender, lines))
         report['input_sha256'][path.as_posix()] = hashlib.sha256(
             (scripts_root / path).read_bytes()).hexdigest()
         report['voice_references'][gender] = {
-            k: {speaker: node.find('Text').get('StringName')
-                for speaker, node in pair.items()} for k, pair in lines.items()}
+            k: {'henry': pair['henry'].find('Text').get('StringName'),
+                'npc_candidates': [t.get('StringName') for t in pair['pool'].findall('.//Response/Text')]}
+            for k, pair in lines.items()}
     localization = ET.Element('Table')
-    for key, label in [('greet', 'Saluer'), ('antagonize', 'Provoquer')]:
+    for key, label in [('open', 'Parler'), ('greet', 'Saluer'), ('antagonize', 'Provoquer')]:
         row = ET.SubElement(localization, 'Row')
         for cell in ['ui_streettalk_' + key, label, label]:
             ET.SubElement(row, 'Cell').text = cell

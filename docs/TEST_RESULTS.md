@@ -2,8 +2,8 @@
 
 5 novembre 2026, environnement Linux, Python 3.12.14, Lupa 2.6 / Lua 5.1.
 
-Version 0.2.2 : `python -m unittest discover -s tests -v`.
-Résultat : **29 tests exécutés, 29 réussis**, aucun ignoré.
+Version 0.2.3 : `python -m unittest discover -s tests -v`.
+Résultat : **34 tests exécutés, 34 réussis**, aucun ignoré.
 
 - Construction reproductible, références manquantes/ambiguës refusées, ordre
   Saluer/Provoquer et intégrité des graphes originaux avant ajout de la branche.
@@ -31,3 +31,17 @@ Le journal utilisateur prouve que la v0.2.0 était chargée au menu sur KCD2
 1.5.6, mais le joueur indique que l'interaction ne fonctionnait pas. Les versions
 0.2.1 et 0.2.2 restent des versions de test dont le fonctionnement en jeu doit
 être confirmé. Les réussites hors moteur ne constituent pas cette confirmation.
+
+Vérifications de la v0.2.3 : clé HUD localisée et traduction française incluse,
+conservation de la durée de la réplique d'Henry, retrait des références hors
+namespace, conservation des pools de voix et de leurs filtres, rejet de scripts
+de quête dans les pools copiés. Les callbacks réellement émis dans le graphe
+sont exercés sur deux salutations puis un troisième essai refusé. Les quinze
+secondes après provocation et la courte attente après annulation sont testées.
+Cette simulation n'est pas une exécution du compilateur d'expressions KCD2.
+
+Retour utilisateur sur la v0.2.2 : entrée visible mais mal affichée (`@` et
+caractères incorrects), silence d'Henry et de Bára en VF ; l'option revient
+après quinze secondes et un éloignement. Ces problèmes sont distincts du
+chargement des mods, qui fonctionne. L'audio et le rendu du correctif restent
+à vérifier dans la version de jeu du joueur.
